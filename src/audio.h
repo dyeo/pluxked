@@ -29,13 +29,13 @@ typedef struct plx_audio
     u32 bitsPerSample;
     u64 totalFrameCount;
     u64 channelFrameCount;
-    i32 **frames;
+    f32 **frames;
 } plx_audio;
 
 // -----------------------------------------------------------------------------
 
 static inline i32 *
-interleave(const int32_t **inFrames, size_t channels, size_t channelFrameCount)
+interleave(const f32 **inFrames, u64 channels, u64 channelFrameCount)
 {
     i32 *outFrames = (i32 *) malloc(sizeof(i32) * channels * channelFrameCount);
     if (outFrames == NULL)
@@ -43,20 +43,20 @@ interleave(const int32_t **inFrames, size_t channels, size_t channelFrameCount)
         return NULL;
     }
 
-    for (size_t i = 0; i < channelFrameCount; ++i)
+    for (u64 i = 0; i < channelFrameCount; ++i)
     {
-        for (size_t ch = 0; ch < channels; ++ch)
+        for (u64 ch = 0; ch < channels; ++ch)
         {
-            outFrames[i * channels + ch] = inFrames[ch][i];
+            outFrames[i * channels + ch] = (i32) (inFrames[ch][i] * 32767.0f);
         }
     }
     return outFrames;
 }
 
-static inline i32 **
+static inline f32 **
 deinterleave(const int32_t *inFrames, size_t channels, size_t channelFrameCount)
 {
-    i32 **outFrames = (i32 **) malloc(sizeof(i32 *) * channels);
+    f32 **outFrames = (f32 **) malloc(sizeof(f32 *) * channels);
     if (outFrames == NULL)
     {
         return NULL;
@@ -64,7 +64,7 @@ deinterleave(const int32_t *inFrames, size_t channels, size_t channelFrameCount)
 
     for (size_t ch = 0; ch < channels; ++ch)
     {
-        outFrames[ch] = (i32 *) malloc(sizeof(i32) * channelFrameCount);
+        outFrames[ch] = (f32 *) malloc(sizeof(f32) * channelFrameCount);
         if (outFrames[ch] == NULL)
         {
             for (size_t j = 0; j < ch; ++j)
@@ -77,11 +77,12 @@ deinterleave(const int32_t *inFrames, size_t channels, size_t channelFrameCount)
 
         for (size_t i = 0; i < channelFrameCount; ++i)
         {
-            outFrames[ch][i] = inFrames[i * channels + ch];
+            outFrames[ch][i] = (f32) inFrames[i * channels + ch] / 32767.0f;
         }
     }
     return outFrames;
 }
+
 // -----------------------------------------------------------------------------
 
 plx_audio *plx_audio_loadf(const char *filepath);

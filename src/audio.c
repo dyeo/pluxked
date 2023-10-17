@@ -50,7 +50,7 @@ bool plx_audio_dumpf(const plx_audio *audio, const char *filepath)
     {
         return false;
     }
-    i32 *raw = interleave((const i32 **) audio->frames,
+    i32 *raw = interleave((const f32 **) audio->frames,
                           audio->channels,
                           audio->channelFrameCount);
     drwav_write_pcm_frames(&wav, audio->totalFrameCount, raw);
