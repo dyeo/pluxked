@@ -13,6 +13,53 @@
 // audio manipulation
 // -----------------------------------------------------------------------------
 
+i32 *interleave(const f32 **inFrames, u64 channels, u64 channelFrameCount)
+{
+    i32 *outFrames = (i32 *) malloc(sizeof(i32) * channels * channelFrameCount);
+    if (outFrames == NULL)
+    {
+        return NULL;
+    }
+
+    for (u64 i = 0; i < channelFrameCount; ++i)
+    {
+        for (u64 ch = 0; ch < channels; ++ch)
+        {
+            outFrames[i * channels + ch] = (i32) (inFrames[ch][i] * 32767.0f);
+        }
+    }
+    return outFrames;
+}
+
+f32 **deinterleave(const i32 *inFrames, u64 channels, u64 channelFrameCount)
+{
+    f32 **outFrames = (f32 **) malloc(sizeof(f32 *) * channels);
+    if (outFrames == NULL)
+    {
+        return NULL;
+    }
+
+    for (u64 ch = 0; ch < channels; ++ch)
+    {
+        outFrames[ch] = (f32 *) malloc(sizeof(f32) * channelFrameCount);
+        if (outFrames[ch] == NULL)
+        {
+            for (u64 j = 0; j < ch; ++j)
+            {
+                free(outFrames[j]);
+            }
+            free(outFrames);
+            return NULL;
+        }
+
+        for (u64 i = 0; i < channelFrameCount; ++i)
+        {
+            outFrames[ch][i] = (f32) inFrames[i * channels + ch] / 32767.0f;
+        }
+    }
+    return outFrames;
+}
+
 plx_audio *plx_audio_loadf(const char *filepath)
 {
     drwav wav;
@@ -33,7 +80,8 @@ plx_audio *plx_audio_loadf(const char *filepath)
                                    NULL};
     i32 *raw         = malloc(audio->totalFrameCount * sizeof(i32));
     drwav_read_pcm_frames(&wav, audio->totalFrameCount, raw);
-    audio->frames = deinterleave(raw, audio->channels, audio->channelFrameCount);
+    audio->frames =
+        deinterleave(raw, audio->channels, audio->channelFrameCount);
     free(raw);
     return audio;
 }
