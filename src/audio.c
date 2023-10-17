@@ -20,30 +20,41 @@ plx_audio *plx_audio_loadf(const char *filepath)
     {
         return NULL;
     }
-    drwav_data_format *wavformat = malloc(sizeof(drwav_data_format));
-    *wavformat                   = (drwav_data_format){wav.container,
-                                                       wav.translatedFormatTag,
-                                                       wav.channels,
-                                                       wav.sampleRate,
-                                                       wav.bitsPerSample};
-    plx_audio *audio             = malloc(sizeof(plx_audio));
-    *audio                       = (plx_audio){filepath,
-                                               WAV,
-                                               wavformat,
-                                               wav.totalPCMFrameCount,
-                                               malloc(wav.totalPCMFrameCount * sizeof(i32))};
-    drwav_read_pcm_frames(&wav, audio->frameCount, audio->frames);
+    plx_audio *audio = malloc(sizeof(plx_audio));
+    *audio           = (plx_audio){filepath,
+                                   WAV,
+                                   wav.container,
+                                   wav.translatedFormatTag,
+                                   wav.channels,
+                                   wav.sampleRate,
+                                   wav.bitsPerSample,
+                                   wav.totalPCMFrameCount,
+                                   wav.totalPCMFrameCount / wav.channels,
+                                   NULL};
+    i32 *raw         = malloc(audio->totalFrameCount * sizeof(i32));
+    drwav_read_pcm_frames(&wav, audio->totalFrameCount, raw);
+    audio->frames = deinterleave(raw, audio->channels, audio->channelFrameCount);
+    free(raw);
     return audio;
 }
 
 bool plx_audio_dumpf(const plx_audio *audio, const char *filepath)
 {
     drwav wav;
-    if (!drwav_init_file_write(&wav, filepath, audio->wav, NULL))
+    drwav_data_format format = {audio->container,
+                                audio->format,
+                                audio->channels,
+                                audio->sampleRate,
+                                audio->bitsPerSample};
+    if (!drwav_init_file_write(&wav, filepath, &format, NULL))
     {
         return false;
     }
-    drwav_write_pcm_frames(&wav, audio->frameCount, audio->frames);
+    i32 *raw = interleave((const i32 **) audio->frames,
+                          audio->channels,
+                          audio->channelFrameCount);
+    drwav_write_pcm_frames(&wav, audio->totalFrameCount, raw);
+    free(raw);
     return true;
 }
 
@@ -53,17 +64,12 @@ void plx_audio_free(plx_audio *audio)
     {
         return;
     }
-    switch (audio->format)
+    for (u64 c = 0; c < audio->channels; ++c)
     {
-        case WAV:
-            free(audio->wav);
-            break;
-
-        default:
-            break;
+        free(audio->frames[c]);
     }
     free(audio->frames);
-    *audio = (plx_audio){NULL, INVALID, NULL, 0, NULL};
+    *audio = (plx_audio){NULL, INVALID, 0, 0, 0, 0, 0, 0, 0, NULL};
 }
 
 // -----------------------------------------------------------------------------
