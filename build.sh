@@ -17,7 +17,7 @@ done
 IDIR="./include"
 LDIR="./lib"
 LIBS=""
-CFLAGS="-Wall -Wextra -Werror -Wno-missing-braces"
+CFLAGS="-Wall -Wextra -Werror -Wno-missing-braces -ggdb"
 ODIR="-o out/"
 OFILE="pluxked"
 
