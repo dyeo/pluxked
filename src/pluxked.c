@@ -1,5 +1,7 @@
+#define WAV_IMPLEMENTATION
+#include "../include/wav.h"
 
-#include "pluxked.h"
+#include <math.h>
 
 int16_t gen_440hz_sine(uint32_t channels,
                        uint32_t sampleRate,

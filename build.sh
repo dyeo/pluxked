@@ -10,8 +10,8 @@ fi
 
 SDIR="./src"
 SRC=(fileio.c pluxked.c)
-for ((i=0; i<${#SRC[@]}; i++)); do
-  SRC[$i]="$SDIR/${SRC[$i]}"
+for ((i = 0; i < ${#SRC[@]}; i++)); do
+    SRC[$i]="$SDIR/${SRC[$i]}"
 done
 
 IDIR="./include"
