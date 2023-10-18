@@ -9,7 +9,7 @@ elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
 fi
 
 SDIR="./src"
-SRC=(fileio.c pluxked.c)
+SRC=(fileio.c audio.c pluxked.c)
 for ((i = 0; i < ${#SRC[@]}; i++)); do
     SRC[$i]="$SDIR/${SRC[$i]}"
 done

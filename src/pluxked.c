@@ -1,35 +1,4 @@
-#define WAV_IMPLEMENTATION
 #include "pluxked.h"
-
-float gen_sine(float hz, float t)
-{
-    return sinf(hz * 2.0f * M_PI * t);
-}
-
-float gen_square_pwm(float hz, float t, float pulseWidth)
-{
-    if (pulseWidth < 0.0f)
-        pulseWidth = 0.0f;
-    if (pulseWidth > 1.0f)
-        pulseWidth = 1.0f;
-
-    float phase = fmodf(hz * t, 1.0f);
-    if (phase < pulseWidth)
-        return 1.0f;
-    else
-        return -1.0f;
-}
-
-float gen_square(float hz, float t)
-{
-    return gen_square_pwm(hz, t, 0.5f);
-}
-
-float gen_sawtooth(float hz, float t)
-{
-    float phase = fmodf(hz * t, 1.0f);
-    return 2.0f * phase - 1.0f;
-}
 
 int16_t gen_440hz_sine(uint32_t channels,
                        uint32_t sampleRate,
@@ -41,7 +10,7 @@ int16_t gen_440hz_sine(uint32_t channels,
     (void) sampleCount;
     (void) channelIndex;
     float t = (float) sampleIndex / (float) sampleRate;
-    return wav_float32_to_pcm16(gen_sine(440.0f, t)* 0.1f);
+    return wav_float32_to_pcm16(gen_sine(440.0f, t) * 0.1f);
 }
 
 int16_t gen_440hz_square(uint32_t channels,
@@ -54,7 +23,7 @@ int16_t gen_440hz_square(uint32_t channels,
     (void) sampleCount;
     (void) channelIndex;
     float t = (float) sampleIndex / (float) sampleRate;
-    return wav_float32_to_pcm16(gen_square_pwm(440.0f, t, 0.25f) * 0.1f);
+    return wav_float32_to_pcm16(gen_square_duty(440.0f, t, 0.25f) * 0.1f);
 }
 
 int16_t gen_440hz_sawtooth(uint32_t channels,
@@ -67,7 +36,7 @@ int16_t gen_440hz_sawtooth(uint32_t channels,
     (void) sampleCount;
     (void) channelIndex;
     float t = (float) sampleIndex / (float) sampleRate;
-    return wav_float32_to_pcm16(gen_sawtooth(440.0f, t)* 0.1f);
+    return wav_float32_to_pcm16(gen_sawtooth(440.0f, t) * 0.1f);
 }
 
 // -----------------------------------------------------------------------------

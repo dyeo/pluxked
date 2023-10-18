@@ -5,7 +5,9 @@
 
 #include "plx.h"
 
-#include "wav.h"
+#include "audio.h"
+
+#include "../include/wav.h"
 
 // -----------------------------------------------------------------------------
 
