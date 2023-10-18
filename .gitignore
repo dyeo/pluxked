@@ -1,3 +1,6 @@
 .vscode/
-out/
-
+[Oo]ut/
+[Oo]utput/
+*.code-workspace
+*.sln
+*.vscode.proj
