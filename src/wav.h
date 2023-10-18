@@ -27,6 +27,10 @@ typedef struct wav_audio
     };
 } wav_audio;
 
+#define WAV_AUDIO_FOREACH(AUDIO, C, S)                                         \
+    (uint32_t C = 0, S = 0; S < (AUDIO)->sampleCount;                          \
+     S += C, C++, C %= (AUDIO)->channels)
+
 // -----------------------------------------------------------------------------
 
 extern wav_audio *wav_loadb(size_t len, uint8_t *data);
@@ -139,10 +143,9 @@ wav_audio *wav_gen_pcm16(uint32_t channels,
     wav->sampleRate  = sampleRate;
     wav->sampleCount = sampleCount;
     wav->pcm16       = malloc(sizeof(int16_t *));
-    wav->pcm16[0] =
-        (int16_t *) malloc(channels * sampleCount * sizeof(int16_t));
     for (uint32_t c = 0; c < channels; ++c)
     {
+        wav->pcm32[c] = malloc(sampleCount * sizeof(int16_t));
         for (uint32_t i = 0; i < sampleCount; ++i)
         {
             wav->pcm16[c][i] =
@@ -224,10 +227,9 @@ wav_audio *wav_gen_pcm32(uint32_t channels,
     wav->sampleRate  = sampleRate;
     wav->sampleCount = sampleCount;
     wav->pcm32       = malloc(sizeof(int32_t *));
-    wav->pcm32[0] =
-        (int32_t *) malloc(channels * sampleCount * sizeof(int32_t));
     for (uint32_t c = 0; c < channels; ++c)
     {
+        wav->pcm32[c] = malloc(sampleCount * sizeof(int32_t));
         for (uint32_t i = 0; i < sampleCount; ++i)
         {
             wav->pcm32[c][i] =
@@ -258,23 +260,28 @@ void wav_to_pcm32(wav_audio *wav)
         free(new_data);
         return;
     }
-    for (uint16_t c = 0; c < wav->channels; c++)
+    switch (wav->format)
     {
-        new_data[c] = malloc(wav->sampleCount * sizeof(int32_t));
-        for (uint32_t i = 0; i < wav->sampleCount; i++)
+        default:
+            return;
+        case wav_pcm16:
         {
-            switch (wav->format)
-            {
-                case wav_pcm16:
-                    new_data[c][i] = wav_pcm16_to_pcm32(wav->pcm16[c][i]);
-                    break;
-                case wav_float32:
-                    new_data[c][i] = wav_float32_to_pcm32(wav->pcm32[c][i]);
-                    break;
-                default:
-                    return;
-            }
+    for
+        WAV_AUDIO_FOREACH(wav, c, i)
+        {
+            new_data[c][i] = wav_pcm16_to_pcm32(wav->pcm16[c][i]);
         }
+        }
+        break;
+        case wav_pcm32:
+        {
+    for
+        WAV_AUDIO_FOREACH(wav, c, i)
+        {
+            new_data[c][i] = wav_float32_to_pcm32(wav->pcm32[c][i]);
+        }
+        }
+        break;
     }
     for (uint16_t ch = 0; ch < wav->channels; ch++)
     {
@@ -309,13 +316,12 @@ wav_audio *wav_gen_float32(uint32_t channels,
     wav->sampleRate  = sampleRate;
     wav->sampleCount = sampleCount;
     wav->float32     = malloc(sizeof(float *));
-    wav->float32[0]  = (float *) malloc(channels * sampleCount * sizeof(float));
     for (uint32_t c = 0; c < channels; ++c)
     {
+        wav->pcm32[c] = malloc(sampleCount * sizeof(int32_t));
         for (uint32_t i = 0; i < sampleCount; ++i)
         {
-            wav->float32[c][i] =
-                callback(channels, sampleRate, sampleCount, c, i);
+    wav->float32[c][i] = callback(channels, sampleRate, sampleCount, c, i);
         }
     }
     return wav;
@@ -347,17 +353,17 @@ void wav_to_float32(wav_audio *wav)
         new_data[c] = malloc(wav->sampleCount * sizeof(float));
         for (uint32_t i = 0; i < wav->sampleCount; i++)
         {
-            switch (wav->format)
-            {
-                case wav_pcm16:
-                    new_data[c][i] = wav_pcm16_to_float32(wav->pcm16[c][i]);
-                    break;
-                case wav_pcm32:
-                    new_data[c][i] = wav_pcm32_to_float32(wav->pcm32[c][i]);
-                    break;
-                default:
-                    return;
-            }
+    switch (wav->format)
+    {
+        case wav_pcm16:
+            new_data[c][i] = wav_pcm16_to_float32(wav->pcm16[c][i]);
+            break;
+        case wav_pcm32:
+            new_data[c][i] = wav_pcm32_to_float32(wav->pcm32[c][i]);
+            break;
+        default:
+            return;
+    }
         }
     }
     for (uint16_t ch = 0; ch < wav->channels; ch++)
@@ -467,37 +473,28 @@ wav_audio *wav_loadb(size_t len, uint8_t *data)
     {
         if (bitsPerSample == 16)
         {
-            wav->format  = wav_pcm16;
-            size_t blen  = wav->channels * wav->sampleCount * sizeof(int16_t);
-            int16_t *raw = malloc(blen);
-            GETBYTES(raw, blen);
-            WAV_DEINTERLEAVE(raw,
-                             int16_t,
-                             wav->pcm16,
-                             int16_t,
-                             wav->channels,
-                             wav->sampleCount);
-            free(raw);
+    wav->format  = wav_pcm16;
+    size_t blen  = wav->channels * wav->sampleCount * sizeof(int16_t);
+    int16_t *raw = malloc(blen);
+    GETBYTES(raw, blen);
+    WAV_DEINTERLEAVE(
+        raw, int16_t, wav->pcm16, int16_t, wav->channels, wav->sampleCount);
+    free(raw);
         }
         else if (bitsPerSample == 32)
         {
-            wav->format  = wav_pcm32;
-            size_t blen  = wav->channels * wav->sampleCount * sizeof(int32_t);
-            int32_t *raw = malloc(blen);
-            GETBYTES(raw, blen);
-            WAV_DEINTERLEAVE(raw,
-                             int32_t,
-                             wav->pcm32,
-                             int32_t,
-                             wav->channels,
-                             wav->sampleCount);
-            free(raw);
+    wav->format  = wav_pcm32;
+    size_t blen  = wav->channels * wav->sampleCount * sizeof(int32_t);
+    int32_t *raw = malloc(blen);
+    GETBYTES(raw, blen);
+    WAV_DEINTERLEAVE(
+        raw, int32_t, wav->pcm32, int32_t, wav->channels, wav->sampleCount);
+    free(raw);
         }
         else
         {
-            fprintf(
-                stderr, "ERROR: Bit width '%u' not supported\n", bitsPerSample);
-            goto error;
+    fprintf(stderr, "ERROR: Bit width '%u' not supported\n", bitsPerSample);
+    goto error;
         }
     }
     else if (audioFormat == wav_float)
@@ -581,20 +578,20 @@ uint8_t *wav_dumpb(const wav_audio *wav, size_t *len)
     switch (wav->format)
     {
         case wav_pcm16:
-            dataLength = wav->channels * wav->sampleCount * sizeof(int16_t);
-            bitWidth   = sizeof(int16_t) * 8;
-            break;
+    dataLength = wav->channels * wav->sampleCount * sizeof(int16_t);
+    bitWidth   = sizeof(int16_t) * 8;
+    break;
         case wav_pcm32:
-            dataLength = wav->channels * wav->sampleCount * sizeof(int32_t);
-            bitWidth   = sizeof(int32_t) * 8;
-            break;
+    dataLength = wav->channels * wav->sampleCount * sizeof(int32_t);
+    bitWidth   = sizeof(int32_t) * 8;
+    break;
         case wav_float32:
-            dataLength = wav->channels * wav->sampleCount * sizeof(float);
-            bitWidth   = sizeof(float) * 8;
-            break;
+    dataLength = wav->channels * wav->sampleCount * sizeof(float);
+    bitWidth   = sizeof(float) * 8;
+    break;
         default:
-            fprintf(stderr, "ERROR: Invalid data format\n");
-            return NULL;
+    fprintf(stderr, "ERROR: Invalid data format\n");
+    return NULL;
     }
 
     uint8_t *data = (uint8_t *) malloc(sizeof(uint8_t) * (44 + dataLength));
@@ -636,45 +633,33 @@ uint8_t *wav_dumpb(const wav_audio *wav, size_t *len)
     {
         case wav_pcm16:
         {
-            int16_t *raw = NULL;
-            WAV_INTERLEAVE(wav->pcm16,
-                           int16_t,
-                           raw,
-                           int16_t,
-                           wav->channels,
-                           wav->sampleCount);
-            CPYVAL(raw, dataLength);
-            free(raw);
-            break;
+    int16_t *raw = NULL;
+    WAV_INTERLEAVE(
+        wav->pcm16, int16_t, raw, int16_t, wav->channels, wav->sampleCount);
+    CPYVAL(raw, dataLength);
+    free(raw);
+    break;
         }
         case wav_pcm32:
         {
-            int32_t *raw = NULL;
-            WAV_INTERLEAVE(wav->pcm32,
-                           int32_t,
-                           raw,
-                           int32_t,
-                           wav->channels,
-                           wav->sampleCount);
-            CPYVAL(raw, dataLength);
-            free(raw);
-            break;
+    int32_t *raw = NULL;
+    WAV_INTERLEAVE(
+        wav->pcm32, int32_t, raw, int32_t, wav->channels, wav->sampleCount);
+    CPYVAL(raw, dataLength);
+    free(raw);
+    break;
         }
         case wav_float32:
         {
-            float *raw = NULL;
-            WAV_INTERLEAVE(wav->float32,
-                           float,
-                           raw,
-                           float,
-                           wav->channels,
-                           wav->sampleCount);
-            CPYVAL(raw, dataLength);
-            free(raw);
-            break;
+    float *raw = NULL;
+    WAV_INTERLEAVE(
+        wav->float32, float, raw, float, wav->channels, wav->sampleCount);
+    CPYVAL(raw, dataLength);
+    free(raw);
+    break;
         }
         default:
-            break;
+    break;
     }
 
     if (len)
@@ -714,30 +699,30 @@ void wav_free(wav_audio *wav)
     {
         case wav_pcm16:
         {
-            for (uint16_t c = 0; wav->channels; ++c)
-            {
-                free(wav->pcm32[c]);
-            }
-            free(wav->pcm32);
-            break;
+    for (uint16_t c = 0; wav->channels; ++c)
+    {
+        free(wav->pcm32[c]);
+    }
+    free(wav->pcm32);
+    break;
         }
         case wav_pcm32:
         {
-            for (uint16_t c = 0; wav->channels; ++c)
-            {
-                free(wav->pcm32[c]);
-            }
-            free(wav->pcm32);
-            break;
+    for (uint16_t c = 0; wav->channels; ++c)
+    {
+        free(wav->pcm32[c]);
+    }
+    free(wav->pcm32);
+    break;
         }
         case wav_float32:
         {
-            for (uint16_t c = 0; wav->channels; ++c)
-            {
-                free(wav->float32[c]);
-            }
-            free(wav->float32);
-            break;
+    for (uint16_t c = 0; wav->channels; ++c)
+    {
+        free(wav->float32[c]);
+    }
+    free(wav->float32);
+    break;
         }
     }
 }
