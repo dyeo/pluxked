@@ -23,9 +23,9 @@ OFILE="pluxked"
 
 if [[ $OS == "Windows" ]]; then
     OFILE="$OFILE.exe"
-    LIBS="$LIBS -lShlwapi"
+    LIBS="$LIBS -lShlwapi -lwinmm"
 elif [[ $OS == "Linux" ]]; then
-    LIBS="$LIBS -lm"
+    LIBS="$LIBS -lm -lasound"
 fi
 
 mkdir -p out

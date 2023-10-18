@@ -1,8 +1,17 @@
 #ifndef _WAV_H
 #define _WAV_H
 
-#if (defined(_WIN32) || defined(_WIN64)) && !defined(_CRT_SECURE_NO_WARNINGS)
+#if defined(_WIN32) || defined(_WIN64)
+#define WAV_WIN32 1
+#define WIN32_MEAN_AND_LEAN
+#define NOGDI
+#if !defined(_CRT_SECURE_NO_WARNINGS)
 #define _CRT_SECURE_NO_WARNINGS
+#endif
+#include <windows.h>
+#else
+#define WAV_LINUX 1
+#include <alsa/asoundlib.h>
 #endif
 
 #include <stdbool.h>
@@ -114,6 +123,9 @@ extern bool wav_dumpf(const char *filename, const wav_audio *wav);
 
 extern wav_audio *wav_loadb(size_t len, uint8_t *data);
 extern uint8_t *wav_dumpb(const wav_audio *wav, size_t *len);
+
+bool wav_play(const wav_audio *wav);
+bool wav_play_async(const wav_audio *wav);
 
 extern void wav_free(wav_audio *wav);
 
@@ -810,6 +822,146 @@ error:
     *len = 1;
   }
   return NULL;
+}
+
+// -----------------------------------------------------------------------------
+
+#ifdef WAV_WIN32
+
+static HGLOBAL _wav_win32_h_header;
+static WAVEHDR _wav_win32_header;
+static HWAVEOUT _wav_win32_h_wav_out;
+
+void CALLBACK _pcm_out_win32(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance,
+                             DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
+  (void)hwo;
+  (void)dwInstance;
+  (void)dwParam1;
+  (void)dwParam2;
+  if (uMsg == WOM_DONE) {
+    waveOutUnprepareHeader(_wav_win32_h_wav_out, &_wav_win32_header,
+                           sizeof(WAVEHDR));
+    GlobalFree(_wav_win32_h_header);
+    waveOutClose(_wav_win32_h_wav_out);
+  }
+}
+
+void _wav_play_pcm(char *data, DWORD dataLength, int bitDepth, int isFloat) {
+  WAVEFORMATEX wfx;
+  wfx.wFormatTag = isFloat ? wav_float : wav_pcm;
+  wfx.nChannels = 1;
+  wfx.nSamplesPerSec = 44100;
+  wfx.wBitsPerSample = bitDepth;
+  wfx.nBlockAlign = (wfx.nChannels * wfx.wBitsPerSample) / 8;
+  wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
+  wfx.cbSize = 0;
+  if (waveOutOpen(&_wav_win32_h_wav_out, WAVE_MAPPER, &wfx,
+                  (DWORD_PTR)_pcm_out_win32, 0,
+                  CALLBACK_FUNCTION) != MMSYSERR_NOERROR) {
+    printf("ERROR: Failed to open wave out device\n");
+    return;
+  }
+  _wav_win32_h_header =
+      GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(WAVEHDR));
+  _wav_win32_header.lpData = data;
+  _wav_win32_header.dwBufferLength = dataLength;
+  waveOutPrepareHeader(_wav_win32_h_wav_out, &_wav_win32_header,
+                       sizeof(WAVEHDR));
+  waveOutWrite(_wav_win32_h_wav_out, &_wav_win32_header, sizeof(WAVEHDR));
+}
+
+#else
+
+static snd_pcm_t *_wav_linux_pcm_handle;
+static snd_pcm_uframes_t _wav_linux_frames;
+static char *_wav_linux_playbuf;
+
+void _wav_play_pcm(char *data, unsigned int dataLength, int bitDepth,
+                   int isFloat) {
+  int err;
+  snd_pcm_hw_params_t *params;
+  if ((err = snd_pcm_open(&_wav_linux_pcm_handle, "default",
+                          SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
+    fprintf(stderr, "ERROR: Cannot open PCM device: %s\n", snd_strerror(err));
+    return;
+  }
+  snd_pcm_hw_params_alloca(&params);
+  snd_pcm_hw_params_any(_wav_linux_pcm_handle, params);
+  if (isFloat) {
+    snd_pcm_hw_params_set_format(_wav_linux_pcm_handle, params,
+                                 SND_PCM_FORMAT_FLOAT_LE);
+  } else {
+    if (bitDepth == 16) {
+      snd_pcm_hw_params_set_format(_wav_linux_pcm_handle, params,
+                                   SND_PCM_FORMAT_S16_LE);
+    } else if (bitDepth == 32) {
+      snd_pcm_hw_params_set_format(_wav_linux_pcm_handle, params,
+                                   SND_PCM_FORMAT_S32_LE);
+    }
+  }
+  snd_pcm_hw_params_set_channels(_wav_linux_pcm_handle, params, 1);
+  unsigned int sampleRate = 44100;
+  snd_pcm_hw_params_set_rate_near(_wav_linux_pcm_handle, params, &sampleRate,
+                                  NULL);
+  snd_pcm_hw_params(_wav_linux_pcm_handle, params);
+  snd_pcm_hw_params_get_period_size(params, &_wav_linux_frames, NULL);
+  _wav_linux_playbuf = (char *)malloc(_wav_linux_frames * 2);
+  while (dataLength > 0) {
+    int framesToWrite = dataLength / (bitDepth / 8);
+    if (framesToWrite > _wav_linux_frames) {
+      framesToWrite = _wav_linux_frames;
+    }
+    memcpy(_wav_linux_playbuf, data, framesToWrite * (bitDepth / 8));
+    data += framesToWrite * (bitDepth / 8);
+    dataLength -= framesToWrite * (bitDepth / 8);
+    err = snd_pcm_writei(_wav_linux_pcm_handle, _wav_linux_playbuf,
+                         framesToWrite);
+    if (err == -EPIPE) {
+      snd_pcm_prepare(_wav_linux_pcm_handle);
+    }
+  }
+  snd_pcm_drain(_wav_linux_pcm_handle);
+  snd_pcm_close(_wav_linux_pcm_handle);
+  free(_wav_linux_playbuf);
+}
+
+#endif
+
+// -----------------------------------------------------------------------------
+
+bool wav_play_async(const wav_audio *wav) {
+  if (wav == NULL) {
+    return false;
+  }
+  switch (wav->format) {
+  default:
+    printf("ERROR: Invalid WAV format\n");
+    return false;
+  case wav_pcm16: {
+    _wav_play_pcm((char *)wav->pcm16[0], wav->sampleCount,
+                  sizeof **(wav->pcm16) * 8, false);
+    break;
+  }
+  case wav_pcm32: {
+    _wav_play_pcm((char *)wav->pcm32[0], wav->sampleCount,
+                  sizeof **(wav->pcm32) * 8, false);
+    break;
+  }
+  case wav_float32: {
+    _wav_play_pcm((char *)wav->float32[0], wav->sampleCount,
+                  sizeof **(wav->float32) * 8, true);
+    break;
+  }
+  }
+  return true;
+}
+
+bool wav_play(const wav_audio *wav) {
+  bool playing = wav_play_async(wav);
+  if (playing) {
+    Sleep(((float)wav->sampleCount / (float)wav->sampleRate) * 1000);
+  }
+  return playing;
 }
 
 // -----------------------------------------------------------------------------

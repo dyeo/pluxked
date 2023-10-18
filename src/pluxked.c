@@ -10,7 +10,7 @@ int16_t gen_440hz_sine(uint32_t channels,
     (void) sampleCount;
     (void) channelIndex;
     float t = (float) sampleIndex / (float) sampleRate;
-    return wav_float32_to_pcm16(gen_sine(440.0f, t) * 0.1f);
+    return wav_float32_to_pcm16(plx_gen_sine(440.0f, t) * 0.1f);
 }
 
 int16_t gen_440hz_square(uint32_t channels,
@@ -23,7 +23,7 @@ int16_t gen_440hz_square(uint32_t channels,
     (void) sampleCount;
     (void) channelIndex;
     float t = (float) sampleIndex / (float) sampleRate;
-    return wav_float32_to_pcm16(gen_square_duty(440.0f, t, 0.25f) * 0.1f);
+    return wav_float32_to_pcm16(plx_gen_square_duty(440.0f, t, 0.25f) * 0.1f);
 }
 
 int16_t gen_440hz_sawtooth(uint32_t channels,
@@ -36,7 +36,7 @@ int16_t gen_440hz_sawtooth(uint32_t channels,
     (void) sampleCount;
     (void) channelIndex;
     float t = (float) sampleIndex / (float) sampleRate;
-    return wav_float32_to_pcm16(gen_sawtooth(440.0f, t) * 0.1f);
+    return wav_float32_to_pcm16(plx_gen_saw(440.0f, t) * 0.1f);
 }
 
 // -----------------------------------------------------------------------------
@@ -45,6 +45,8 @@ int main(int argc, char **argv)
 {
     wav_audio *sine = wav_gen_pcm16(2, wav_44100hz, 44100 * 5, gen_440hz_sine);
     wav_dumpf("sine.wav", sine);
+
+    wav_play(sine);
 
     wav_audio *sawtooth =
         wav_gen_pcm16(2, wav_44100hz, 44100 * 5, gen_440hz_sawtooth);
